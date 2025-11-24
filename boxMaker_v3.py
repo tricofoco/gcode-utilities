@@ -1,4 +1,8 @@
-def make_3d_outline_gcode(inner_width, inner_length, height, filename):
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+def make_3d_outline_gcode(inner_width, inner_length, height, filename_base):
     """
     Build a G-code file with:
       - outer rectangle (0,0) to (outer_width, outer_length)
@@ -12,14 +16,11 @@ def make_3d_outline_gcode(inner_width, inner_length, height, filename):
 
     # --- Basic machining parameters (tune if you want) ---
     SAFE_Z = 12.7      # mm (0.5 in)
-    CUT_DEPTH = -2.54  # mm (-0.1 in) – same magnitude as material Z in your .TAP
+    CUT_DEPTH = -2.54  # mm (-0.1 in)
     PLUNGE_FEED = 200  # mm/min
     CUT_FEED = 3000    # mm/min
 
     # Compute outer and inner rectangle coordinates
-    # Inner rectangle is offset by `height` from all sides
-    # --- Geometry: inner & outer rectangles ---
-    # Inner rectangle is offset by `height` from all sides
     ix0, iy0 = height, height
     ix1, iy1 = ix0 + inner_width, iy0 + inner_length
 
@@ -28,8 +29,8 @@ def make_3d_outline_gcode(inner_width, inner_length, height, filename):
 
     material_thickness = abs(CUT_DEPTH)
 
-    #filename = f"boxOutline_{inner_width:.3f}x{inner_length:.3f}x{height:.3f}.TAP"
-    filename = filename + ".TAP"
+    # filename_base is a full path without extension; append .TAP
+    filename = filename_base + ".TAP"
 
     lines = []
 
@@ -72,8 +73,6 @@ def make_3d_outline_gcode(inner_width, inner_length, height, filename):
     end_path()
 
     # --- Connector lines from inner corners ---
-    # Note: each is its own path, because they branch from the corner.
-
     # Top-left inner corner: horizontal to left, vertical to bottom
     begin_path(ix0, iy0)
     line_to(x0, iy0)   # to left
@@ -117,29 +116,126 @@ def make_3d_outline_gcode(inner_width, inner_length, height, filename):
     lines.append("M30")
     lines.append("")
 
+    # Actually write the file
     with open(filename, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
     return filename
 
 
+# ---------------- Tkinter GUI ---------------- #
+
+class BoxMakerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Box G-code Generator")
+
+        # Variables
+        self.width_var = tk.StringVar()
+        self.length_var = tk.StringVar()
+        self.height_var = tk.StringVar()
+        self.unit_var = tk.StringVar(value="mm")  # default
+        self.filename_var = tk.StringVar()
+        self.folder_var = tk.StringVar()
+
+        # Layout
+        row = 0
+
+        tk.Label(root, text="Inner width:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+        tk.Entry(root, textvariable=self.width_var).grid(row=row, column=1, padx=5, pady=5)
+
+        row += 1
+        tk.Label(root, text="Inner length:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+        tk.Entry(root, textvariable=self.length_var).grid(row=row, column=1, padx=5, pady=5)
+
+        row += 1
+        tk.Label(root, text="Height (offset):").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+        tk.Entry(root, textvariable=self.height_var).grid(row=row, column=1, padx=5, pady=5)
+
+        row += 1
+        tk.Label(root, text="Unit:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+        unit_menu = tk.OptionMenu(root, self.unit_var, "mm", "in")
+        unit_menu.grid(row=row, column=1, sticky="w", padx=5, pady=5)
+
+        row += 1
+        tk.Label(root, text="Filename (without .TAP):").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+        tk.Entry(root, textvariable=self.filename_var).grid(row=row, column=1, padx=5, pady=5)
+
+        row += 1
+        tk.Label(root, text="Save folder:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+        folder_entry = tk.Entry(root, textvariable=self.folder_var, width=30)
+        folder_entry.grid(row=row, column=1, padx=5, pady=5, sticky="w")
+        tk.Button(root, text="Browse...", command=self.browse_folder).grid(row=row, column=2, padx=5, pady=5)
+
+        row += 1
+        tk.Button(root, text="Generate G-code", command=self.generate_gcode).grid(
+            row=row, column=0, columnspan=3, pady=10
+        )
+
+    def browse_folder(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            self.folder_var.set(folder)
+
+    def generate_gcode(self):
+        # Validate numeric inputs
+        try:
+            width = float(self.width_var.get())
+            length = float(self.length_var.get())
+            height = float(self.height_var.get())
+        except ValueError:
+            messagebox.showerror("Invalid input", "Width, length and height must be numbers.")
+            return
+
+        unit = self.unit_var.get()
+        filename = self.filename_var.get().strip()
+        folder = self.folder_var.get().strip()
+
+        if not filename:
+            messagebox.showerror("Missing filename", "Please enter a filename.")
+            return
+
+        if not folder:
+            messagebox.showerror("Missing folder", "Please choose a folder where the file will be saved.")
+            return
+
+        # Normalize filename: remove .tap if user typed it
+        if filename.lower().endswith(".tap"):
+            filename = filename[:-4]
+
+        # Convert to mm if needed
+        if unit == "in":
+            width_mm = width * 25.4
+            length_mm = length * 25.4
+            height_mm = height * 25.4
+        elif unit == "mm":
+            width_mm = width
+            length_mm = length
+            height_mm = height
+        else:
+            messagebox.showerror("Invalid unit", f"Unit '{unit}' is not supported.")
+            return
+
+        # Build full path without extension
+        filename_base = os.path.join(folder, filename)
+
+        try:
+            gcode_path = make_3d_outline_gcode(width_mm, length_mm, height_mm, filename_base)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate G-code:\n{e}")
+            return
+
+        outer_w = width_mm + 2 * height_mm
+        outer_l = length_mm + 2 * height_mm
+
+        messagebox.showinfo(
+            "Success",
+            f"G-code written to:\n{gcode_path}\n\n"
+            f"Outer size (mm): {outer_w:.3f} x {outer_l:.3f}"
+        )
+
+
 if __name__ == "__main__":
-    width = float(input("Enter the inner width: "))
-    length = float(input("Enter the inner length: "))
-    height = float(input("Enter the height: "))
-    unit = input("Enter the unit: ")
-    filename = input("Enter the filename: ")
-    if unit in ["in", "inch", "inches"]:
-        width *= 25.4
-        length *= 25.4
-        height *= 25.4
-    elif unit in ["mm", "millimeter", "millimeters"]:
-        pass
-    else:
-        print(f"Invalid unit: {unit}")
-        exit(1)
-    outer_w = width + 2 * height
-    outer_l = length + 2 * height
-    print(f"Outer size: {outer_w} x {outer_l} {unit}")
-    gcode_file = make_3d_outline_gcode(width, length, height, filename)
-    print(f"G-code written to: {gcode_file}")
+    root = tk.Tk()
+    app = BoxMakerApp(root)
+    root.mainloop()
