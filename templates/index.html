@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>G-Code Box Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 G-Code Box Generator</h1>
+        <p class="subtitle">Generate CNC machining G-code for box outlines</p>
+        
+        <form id="gcodeForm">
+            <div class="form-group">
+                <label for="width">Inner Width</label>
+                <input type="number" id="width" name="width" step="0.01" min="0.01" required placeholder="Enter width">
+            </div>
+
+            <div class="form-group">
+                <label for="length">Inner Length</label>
+                <input type="number" id="length" name="length" step="0.01" min="0.01" required placeholder="Enter length">
+            </div>
+
+            <div class="form-group">
+                <label for="height">Height (Wall Thickness)</label>
+                <input type="number" id="height" name="height" step="0.01" min="0.01" required placeholder="Enter height">
+            </div>
+
+            <div class="form-group">
+                <label>Unit</label>
+                <div class="unit-select">
+                    <div class="unit-option" data-unit="mm">Millimeters (mm)</div>
+                    <div class="unit-option selected" data-unit="in">Inches (in)</div>
+                </div>
+                <input type="hidden" id="unit" name="unit" value="mm">
+            </div>
+
+            <div class="form-group">
+                <label for="filename">Filename (without extension)</label>
+                <input type="text" id="filename" name="filename" required placeholder="e.g., my_box" value="box">
+            </div>
+
+            <button type="submit" class="generate-btn" id="generateBtn">
+                Generate & Download G-Code
+            </button>
+
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+        </form>
+
+        <div class="info-box">
+            <strong>Note:</strong> The generated G-code file will be downloaded with a .TAP extension. 
+            All dimensions are converted to millimeters internally for G-code generation.
+        </div>
+    </div>
+
+    <script>
+        // Unit selection
+        const unitOptions = document.querySelectorAll('.unit-option');
+        const unitInput = document.getElementById('unit');
+
+        unitOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                unitOptions.forEach(opt => opt.classList.remove('selected'));
+                option.classList.add('selected');
+                unitInput.value = option.dataset.unit;
+            });
+        });
+
+        // Form submission
+        const form = document.getElementById('gcodeForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const generateBtn = document.getElementById('generateBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Hide previous messages
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+            
+            // Disable button
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Get filename from form input
+                    const filenameInput = document.getElementById('filename').value.trim();
+                    const filename = filenameInput ? filenameInput + '.TAP' : 'box.TAP';
+                    
+                    // Try to get filename from Content-Disposition header as fallback
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let downloadFilename = filename;
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                        if (filenameMatch) {
+                            downloadFilename = filenameMatch[1];
+                        }
+                    }
+
+                    // Create blob and download
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = downloadFilename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+
+                    successMessage.textContent = `G-code file "${downloadFilename}" generated and downloaded successfully!`;
+                    successMessage.style.display = 'block';
+                } else {
+                    const error = await response.json();
+                    errorMessage.textContent = error.error || 'An error occurred while generating the G-code';
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                errorMessage.textContent = 'Network error: ' + error.message;
+                errorMessage.style.display = 'block';
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate & Download G-Code';
+            }
+        });
+    </script>
+</body>
+</html>
+
