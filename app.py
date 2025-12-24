@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, send_file, jsonify
 from boxMaker_v3 import make_3d_outline_gcode
+from surfacing_gcodev3 import generate_surfacing_gcode
 import os
 import tempfile
 import atexit
@@ -87,6 +88,110 @@ def generate_gcode():
         )
         # Explicitly set Content-Disposition header to ensure filename is correct
         response.headers['Content-Disposition'] = f'attachment; filename="{filename}.TAP"'
+        return response
+        
+    except ValueError as e:
+        return jsonify({'error': f'Invalid input: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+    finally:
+        # Note: We don't delete immediately as Flask needs to send the file
+        # Cleanup happens on exit via atexit
+        pass
+
+@app.route('/generate_surfacing', methods=['POST'])
+def generate_surfacing():
+    """Handle surfacing form submission and generate gcode file"""
+    temp_file_path = None
+    try:
+        # Get form data
+        width = float(request.form.get('width', 0))
+        length = float(request.form.get('length', 0))
+        depth = float(request.form.get('depth', 0))
+        stepover = float(request.form.get('stepover', 0))
+        max_stepdown = float(request.form.get('max_stepdown', 0))
+        retract_height = float(request.form.get('retract_height', 5.0))
+        unit = request.form.get('unit', 'mm').lower()
+        spindle_speed = float(request.form.get('spindle_speed', 12000))
+        plunge_rate = float(request.form.get('plunge_rate', 15.0))
+        feed_rate = float(request.form.get('feed_rate', 80.0))
+        rate_unit = request.form.get('rate_unit', 'mm/min')
+        filename = request.form.get('filename', 'surfacing').strip()
+        
+        # Validate inputs
+        if width <= 0 or length <= 0 or depth <= 0:
+            return jsonify({'error': 'Width, length, and depth must be greater than 0'}), 400
+        
+        if stepover <= 0 or max_stepdown <= 0:
+            return jsonify({'error': 'Stepover and max stepdown must be greater than 0'}), 400
+        
+        if retract_height <= 0:
+            return jsonify({'error': 'Retract height must be greater than 0'}), 400
+        
+        if feed_rate <= 0 or plunge_rate <= 0:
+            return jsonify({'error': 'Feed rate and plunge rate must be greater than 0'}), 400
+        
+        if not filename:
+            return jsonify({'error': 'Filename cannot be empty'}), 400
+        
+        # Normalize unit values to match function expectations
+        if unit in ['in', 'inch', 'inches']:
+            geom_unit = 'inch'
+        elif unit in ['mm', 'millimeter', 'millimeters']:
+            geom_unit = 'mm'
+        else:
+            return jsonify({'error': f'Invalid unit: {unit}. Use mm or in'}), 400
+        
+        # Normalize rate unit values
+        if rate_unit in ['in/min', 'inch/min']:
+            rate_unit_normalized = 'in/min'
+        elif rate_unit == 'mm/min':
+            rate_unit_normalized = 'mm/min'
+        else:
+            return jsonify({'error': f'Invalid rate unit: {rate_unit}. Use mm/min or in/min'}), 400
+        
+        # Convert retract_height to mm based on selected unit
+        if geom_unit == 'inch':
+            retract_z_mm = retract_height * 25.4
+        else:  # mm
+            retract_z_mm = retract_height
+        
+        # Generate G-code string
+        gcode_string = generate_surfacing_gcode(
+            width=width,
+            length=length,
+            final_depth=depth,
+            max_stepdown=max_stepdown,
+            stepover=stepover,
+            unit=geom_unit,
+            feed_rate=feed_rate,
+            plunge_rate=plunge_rate,
+            rate_unit=rate_unit_normalized,
+            spindle_speed_rpm=spindle_speed,
+            retract_z_mm=retract_z_mm,
+            program_name=filename
+        )
+        
+        # Create temporary file
+        temp_dir = tempfile.gettempdir()
+        temp_file_path = os.path.join(temp_dir, filename + '.nc')
+        
+        # Write G-code to file
+        with open(temp_file_path, 'w') as f:
+            f.write(gcode_string)
+        
+        # Track for cleanup
+        temp_files.append(temp_file_path)
+        
+        # Send file for download
+        response = send_file(
+            temp_file_path,
+            as_attachment=True,
+            download_name=filename + '.nc',
+            mimetype='text/plain'
+        )
+        # Explicitly set Content-Disposition header to ensure filename is correct
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}.nc"'
         return response
         
     except ValueError as e:

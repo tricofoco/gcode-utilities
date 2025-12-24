@@ -80,11 +80,103 @@
             <div class="section-divider"></div>
         </div>
         
-        <!-- More generator sections can be added here in the future -->
+        <!-- Surfacing Section -->
+        <div class="generator-section">
+            <div class="section-divider"></div>
+            <div class="title-row">
+                <h1 class="section-title">Surfacing</h1>
+                <div class="tool-indicator">Tool: Flat End</div>
+            </div>
+            
+            <form id="surfacingForm" class="generator-form">
+                <div class="input-row">
+                    <div class="input-field">
+                        <label for="surf_width">Width</label>
+                        <input type="number" id="surf_width" name="width" step="0.01" min="0.01" required>
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_length">Length</label>
+                        <input type="number" id="surf_length" name="length" step="0.01" min="0.01" required>
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_depth">Depth</label>
+                        <input type="number" id="surf_depth" name="depth" step="0.01" min="0.01" required>
+                    </div>
+                </div>
+                
+                <div class="input-row">
+                    <div class="input-field">
+                        <label for="surf_stepover">Stepover</label>
+                        <input type="number" id="surf_stepover" name="stepover" step="0.01" min="0.01" required>
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_max_stepdown">Max Stepdown</label>
+                        <input type="number" id="surf_max_stepdown" name="max_stepdown" step="0.01" min="0.01" required>
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_retract_height">Retract Height</label>
+                        <input type="number" id="surf_retract_height" name="retract_height" step="0.01" min="0.01" required value="1.0">
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_unit">Unit</label>
+                        <select id="surf_unit" name="unit">
+                            <option value="in">in</option>
+                            <option value="mm">mm</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="input-row">
+                    <div class="input-field">
+                        <label for="surf_spindle_speed">Spindle Speed (RPM)</label>
+                        <input type="number" id="surf_spindle_speed" name="spindle_speed" step="1" min="0" required value="12000">
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_plunge_rate">Plunge Rate</label>
+                        <input type="number" id="surf_plunge_rate" name="plunge_rate" step="0.01" min="0.01" required value="15.0">
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_feed_rate">Feed Rate</label>
+                        <input type="number" id="surf_feed_rate" name="feed_rate" step="0.01" min="0.01" required value="80.0">
+                    </div>
+                    
+                    <div class="input-field">
+                        <label for="surf_rate_unit">Rate Unit</label>
+                        <select id="surf_rate_unit" name="rate_unit">
+                            <option value="in/min">in/min</option>
+                            <option value="mm/min">mm/min</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="action-row">
+                    <div class="input-field filename-field">
+                        <label for="surf_filename">Filename</label>
+                        <input type="text" id="surf_filename" name="filename" required value="surfacing">
+                    </div>
+                    
+                    <button type="submit" class="generate-btn" id="surfacingGenerateBtn">
+                        GENERATE
+                    </button>
+                </div>
+                
+                <div class="error-message" id="surfacingErrorMessage"></div>
+                <div class="success-message" id="surfacingSuccessMessage"></div>
+            </form>
+            
+            <div class="section-divider"></div>
+        </div>
     </div>
 
     <script>
-        // Form submission
+        // Box Maker form submission
         const form = document.getElementById('gcodeForm');
         const errorMessage = document.getElementById('errorMessage');
         const successMessage = document.getElementById('successMessage');
@@ -153,6 +245,78 @@
             } finally {
                 generateBtn.disabled = false;
                 generateBtn.textContent = 'GENERATE';
+            }
+        });
+
+        // Surfacing form submission
+        const surfacingForm = document.getElementById('surfacingForm');
+        const surfacingErrorMessage = document.getElementById('surfacingErrorMessage');
+        const surfacingSuccessMessage = document.getElementById('surfacingSuccessMessage');
+        const surfacingGenerateBtn = document.getElementById('surfacingGenerateBtn');
+
+        surfacingForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Hide previous messages
+            surfacingErrorMessage.style.display = 'none';
+            surfacingSuccessMessage.style.display = 'none';
+            
+            // Disable button
+            surfacingGenerateBtn.disabled = true;
+            surfacingGenerateBtn.textContent = 'GENERATING...';
+
+            const formData = new FormData(surfacingForm);
+
+            try {
+                const response = await fetch('/generate_surfacing', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Get filename from form input
+                    const filenameInput = document.getElementById('surf_filename').value.trim();
+                    const filename = filenameInput ? filenameInput + '.nc' : 'surfacing.nc';
+                    
+                    // Try to get filename from Content-Disposition header as fallback
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let downloadFilename = filename;
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                        if (filenameMatch) {
+                            downloadFilename = filenameMatch[1];
+                        }
+                    }
+
+                    // Create blob and download
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = downloadFilename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+
+                    surfacingSuccessMessage.textContent = `G-code file "${downloadFilename}" generated and downloaded successfully!`;
+                    surfacingSuccessMessage.style.display = 'block';
+                    
+                    // Hide success message after 5 seconds
+                    setTimeout(() => {
+                        surfacingSuccessMessage.style.display = 'none';
+                    }, 5000);
+                } else {
+                    const error = await response.json();
+                    surfacingErrorMessage.textContent = error.error || 'An error occurred while generating the G-code';
+                    surfacingErrorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                surfacingErrorMessage.textContent = 'Network error: ' + error.message;
+                surfacingErrorMessage.style.display = 'block';
+            } finally {
+                surfacingGenerateBtn.disabled = false;
+                surfacingGenerateBtn.textContent = 'GENERATE';
             }
         });
     </script>
