@@ -35,11 +35,17 @@ def generate_gcode():
         length = float(request.form.get('length', 0))
         height = float(request.form.get('height', 0))
         unit = request.form.get('unit', 'mm').lower()
+        plunge_feed = float(request.form.get('plunge_feed', 200))
+        cut_feed = float(request.form.get('cut_feed', 3000))
+        feed_unit = request.form.get('feed_unit', 'mm/min')
         filename = request.form.get('filename', 'box').strip()
         
         # Validate inputs
         if width <= 0 or length <= 0 or height <= 0:
             return jsonify({'error': 'All dimensions must be greater than 0'}), 400
+        
+        if plunge_feed <= 0 or cut_feed <= 0:
+            return jsonify({'error': 'Feed rates must be greater than 0'}), 400
         
         if not filename:
             return jsonify({'error': 'Filename cannot be empty'}), 400
@@ -52,6 +58,13 @@ def generate_gcode():
         elif unit not in ['mm', 'millimeter', 'millimeters']:
             return jsonify({'error': f'Invalid unit: {unit}. Use mm or in'}), 400
         
+        # Convert feed rates to mm/min if needed
+        if feed_unit == 'in/min':
+            plunge_feed *= 25.4
+            cut_feed *= 25.4
+        elif feed_unit not in ['mm/min', 'in/min']:
+            return jsonify({'error': f'Invalid feed unit: {feed_unit}. Use mm/min or in/min'}), 400
+        
         # Generate gcode file
         # Use a temporary directory to store the file
         temp_dir = tempfile.gettempdir()
@@ -59,7 +72,7 @@ def generate_gcode():
         temp_filename_base = os.path.join(temp_dir, filename)
         
         # Generate the gcode (function adds .TAP extension)
-        gcode_file = make_3d_outline_gcode(width, length, height, temp_filename_base)
+        gcode_file = make_3d_outline_gcode(width, length, height, temp_filename_base, plunge_feed, cut_feed)
         temp_file_path = gcode_file
         
         # Track for cleanup

@@ -1,4 +1,4 @@
-def make_3d_outline_gcode(inner_width, inner_length, height, filename):
+def make_3d_outline_gcode(inner_width, inner_length, height, filename, plunge_feed=200, cut_feed=3000):
     """
     Build a G-code file with:
       - outer rectangle (0,0) to (outer_width, outer_length)
@@ -8,13 +8,21 @@ def make_3d_outline_gcode(inner_width, inner_length, height, filename):
     All geometry is cut as individual line segments at one depth.
 
     NOTE: This assumes dimensions are in millimetres and outputs G21.
+    
+    Args:
+        inner_width: Inner width in millimeters
+        inner_length: Inner length in millimeters
+        height: Height/wall thickness in millimeters
+        filename: Output filename (without .TAP extension)
+        plunge_feed: Plunge feed rate in mm/min (default: 200)
+        cut_feed: Cutting feed rate in mm/min (default: 3000)
     """
 
     # --- Basic machining parameters (tune if you want) ---
     SAFE_Z = 12.7      # mm (0.5 in)
     CUT_DEPTH = -2.54  # mm (-0.1 in) – same magnitude as material Z in your .TAP
-    PLUNGE_FEED = 200  # mm/min
-    CUT_FEED = 3000    # mm/min
+    PLUNGE_FEED = plunge_feed  # mm/min (passed as parameter)
+    CUT_FEED = cut_feed        # mm/min (passed as parameter)
 
     # Compute outer and inner rectangle coordinates
     # Inner rectangle is offset by `height` from all sides
